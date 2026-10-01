@@ -1,8 +1,7 @@
 --===================================================================--
--- dmc_multitouch.lua
+-- dmc_corona/dmc_multitouch.lua
 --
--- by David McCuskey
--- Documentation: http://docs.davidmccuskey.com/display/docs/dmc_multitouch.lua
+-- Documentation: https://github.com/dmccuskey/dmc-multitouch
 --===================================================================--
 
 --[[
@@ -31,8 +30,13 @@ DEALINGS IN THE SOFTWARE.
 
 -- Semantic Versioning Specification: http://semver.org/
 
-local VERSION = "0.3.0"
+local VERSION = "0.4.0"
 
+
+-- boot dmc_corona with boot script, if it's there
+-- dmc-multitouch has no settings
+--
+pcall( function() require( 'dmc_corona_boot' ) end )
 
 --===================================================================--
 -- Imports
@@ -40,15 +44,13 @@ local VERSION = "0.3.0"
 
 local TouchMgr = require( "dmc_touchmanager" )
 
---local Utils = require( "dmc_utils" )
-
 --===================================================================--
 -- Setup, Constants
 --===================================================================--
 
 local MULTITOUCH_EVENT = "multitouch_event"
 
-local DEBUG = true
+local DEBUG = false
 
 local debugObjs = {}
 
@@ -56,6 +58,12 @@ local debugObjs = {}
 --===================================================================--
 -- Triggr Class
 --===================================================================--
+
+-- tracks the angle of the line between two touches as it turns,
+-- through any number of turns
+--
+-- angle_sum: how far the line has turned since start(), in degrees,
+-- negative is counter-clockwise in trig coordinates (y up)
 
 local Triggr = {}
 
@@ -73,478 +81,28 @@ end
 
 
 function Triggr:reset()
-	--print( "Triggr:reset" )
-
-	self.quad = 0  -- 1,2,3,4 
-	self.quad_cnt = 0 -- +/- num
-	self.direction = 0 -- -1, 0, 1
-	self.stateFunc = nil -- func to current state
-
-	self.ang_base = 0 -- original angle
-	self.ang_delta_base = 0 -- -ang/+ang
-	self.ang_delta = 0 -- -ang/+ang
-	self.ang_delta_sum = 0 -- -ang/+ang
-
-	self.angle_sum = 0 -- -ang/+ang
-
+	self.angle_sum = 0
+	self.ang_last = nil -- angle of the line at the last call
 end
 
 function Triggr:start( x, y )
-	local ang
-
 	self:reset()
-
-	self.quad, self.ang_base = self:_getQuad( x, y )
-
-	if self.quad == 1 then
-		self.stateFunc = self._quad_I
-	elseif self.quad == 2 then
-		self.stateFunc = self._quad_II
-	elseif self.quad == 3 then
-		self.stateFunc = self._quad_III
-	elseif self.quad == 4 then
-		self.stateFunc = self._quad_IV
-	end
+	self.ang_last = math.deg( math.atan2( y, x ) )
 end
 
 function Triggr:set( x, y )
+	local ang = math.deg( math.atan2( y, x ) )
+	local delta = ang - self.ang_last
 
-	local new_quad, refang = self:_getQuad( x, y )
-
-	self:stateFunc( new_quad, refang )
-
-	self.angle_sum = self.ang_delta_base + self.ang_delta_sum + self.ang_delta
-
-	--print( new_quad, Triggr.direction, Triggr.quad_cnt )
-	--print( new_quad, Triggr.quad_cnt, ( Triggr.ang_delta_base + Triggr.ang_delta + Triggr.ang_delta_sum ), Triggr.ang_delta, Triggr.ang_delta_sum )
-
-end
-
-
---== Private Methods ==--
-
-function Triggr:_getQuad( x, y )
-	--print( "Triggr:_getQuad", x, y )
-	local q, ang, refang
-
-	ang = math.deg( math.atan2( y, x ) )
-	if x >= 0 and y >= 0 then
-		q = 1
-		refang = ang
-	elseif x < 0 and y >= 0 then
-		q = 2
-		refang = 180 - ang
-	elseif x < 0 and y < 0 then
-		q = 3
-		--refang = ang - 180
-		refang = 180 + ang
-	elseif x >= 0 and y < 0 then
-		q = 4
-		--refang = 360 - ang
-		refang = -ang
+	-- take the short way round, across the -180/180 seam
+	if delta > 180 then
+		delta = delta - 360
+	elseif delta < -180 then
+		delta = delta + 360
 	end
 
-	return q, refang 
-end
-
-function Triggr:_quad_I( new_quad, refang )
-
-	local curr_quad = self.quad
-	local curr_quad_cnt = self.quad_cnt
-	local ang_base = self.ang_base
-
-	-- back, negative
-	if new_quad == 2 then
-
-		self.quad_cnt = self.quad_cnt - 1
-
-		if curr_quad_cnt == 0 then
-			self.ang_delta_base = self.ang_base - 90
-			self.ang_delta = 0
-			self.ang_delta_sum = 0
-		else
-			self.ang_delta = 0 -- !!!!!!!!!!!!!!!!!!!
-
-			if self.quad_cnt == 0 then
-				self.ang_delta_sum = 0
-			else
-				self.ang_delta_sum = self.direction * ( math.abs( self.quad_cnt ) - 1 ) * 90
-			end
-		end
-
-		--print( "I > II : ", math.abs( self.quad_cnt ), self.ang_delta_base, self.ang_delta_sum )
-
-		self.quad = new_quad
-		self.stateFunc = self._quad_II
-
-		self:stateFunc( new_quad, refang )
-
-
-	-- forward, positive
-	elseif new_quad == 4 then
-
-		self.quad_cnt = self.quad_cnt + 1
-
-		if curr_quad_cnt == 0 then
-			self.ang_delta_base = self.ang_base
-			self.ang_delta = 0
-			self.ang_delta_sum = 0
-		else
-			if self.quad_cnt == 0 then
-				self.ang_delta_sum = 0
-			else
-				self.ang_delta_sum = self.direction * ( math.abs( self.quad_cnt ) - 1 ) * 90
-			end
-		end
-
-		--print( "I > IV : ", math.abs( self.quad_cnt ), self.ang_delta_base, self.ang_delta_sum )
-
-		self.quad = new_quad
-		self.stateFunc = self._quad_IV
-
-		self:stateFunc( new_quad, refang )
-
-	-- cross, positive
-	elseif new_quad == 3 then
-
-	-- current quadrant
-	else
-
-		-- we started here
-		if curr_quad_cnt == 0 then
-			self.ang_delta_base = 0
-
-			if refang > ang_base then
-				self.direction = -1
-				self.ang_delta = self.ang_base - refang
-
-			elseif refang < ang_base then
-				self.direction = 1
-				self.ang_delta = self.ang_base - refang
-
-			else
-				self.direction = 0
-				self.ang_delta = 0
-			end
-
-		else
-			-- TODO
-			-- back, negative
-			if self.direction == -1 then
-				self.ang_delta = -refang
-
-			-- forward, positive
-			elseif self.direction == 1 then
-				-- TODO
-				self.ang_delta = 90 - refang
-
-			end
-
-		end
-
-	end
-
-end
-
-
-function Triggr:_quad_II( new_quad, refang )
-
-	local curr_quad = self.quad
-	local curr_quad_cnt = self.quad_cnt
-	local ang_base = self.ang_base
-
-	local quad_multiple
-
-	-- back, negative
-	if new_quad == 3 then
-
-		self.quad_cnt = self.quad_cnt - 1
-
-		if curr_quad_cnt == 0 then
-			self.ang_delta_base = -self.ang_base
-			self.ang_delta = 0
-			self.ang_delta_sum = 0
-		else
-			self.ang_delta = 0
-
-			if self.quad_cnt == 0 then
-				self.ang_delta_sum = 0
-			else
-				self.ang_delta_sum = self.direction * ( math.abs( self.quad_cnt ) - 1 ) * 90
-			end
-		end
-
-		--print( "II > III : ", math.abs( self.quad_cnt ), self.ang_delta_base, self.ang_delta_sum )
-
-		self.quad = new_quad
-		self.stateFunc = self._quad_III
-
-		self:stateFunc( new_quad, refang )
-	
-
-	-- forward, positive
-	elseif new_quad == 1 then
-
-		self.quad_cnt = self.quad_cnt + 1
-
-		if curr_quad_cnt == 0 then
-			self.ang_delta_base = 90 - self.ang_base
-			self.ang_delta = 0
-			self.ang_delta_sum = 0
-		else
-			self.ang_delta = 0
-
-			if self.quad_cnt == 0 then
-				self.ang_delta_sum = 0
-			else
-				self.ang_delta_sum = self.direction * ( math.abs( self.quad_cnt ) - 1 ) * 90
-			end
-		end
-
-		--print( "II > I : ", math.abs( self.quad_cnt ), self.ang_delta_base, self.ang_delta_sum )
-
-		self.quad = new_quad
-		self.stateFunc = self._quad_I
-
-		self:stateFunc( new_quad, refang )
-
-
-	-- cross, positive
-	elseif new_quad == 4 then
-
-	-- current quadrant
-	else
-
-		-- we started here
-		if curr_quad_cnt == 0 then
-			self.ang_delta_base = 0
-
-			if refang < ang_base then
-				self.direction = -1
-				self.ang_delta = -( self.ang_base - refang )
-
-			elseif refang > ang_base then
-				self.direction = 1
-				self.ang_delta = -( self.ang_base - refang )
-
-			else
-				self.direction = 0
-				self.ang_delta = 0
-			end
-
-		else
-			-- back, negative
-			if self.direction == -1 then
-				self.ang_delta = refang - 90
-
-			-- forward, positive
-			elseif self.direction == 1 then
-				self.ang_delta = refang
-
-			end
-
-		end
-
-	end
-
-end
-
-function Triggr:_quad_III( new_quad, refang )
-
-	local curr_quad = self.quad
-	local curr_quad_cnt = self.quad_cnt
-	local ang_base = self.ang_base
-
-	-- back, negative
-	if new_quad == 4 then
-
-		self.quad_cnt = self.quad_cnt - 1
-
-		if curr_quad_cnt == 0 then
-			self.ang_delta_base = self.ang_base - 90
-			self.ang_delta = 0
-			self.ang_delta_sum = 0
-		else
-			if self.quad_cnt == 0 then
-				self.ang_delta_sum = 0
-			else
-				self.ang_delta_sum = self.direction * ( math.abs( self.quad_cnt ) - 1 ) * 90
-			end
-		end
-
-		--print( "III > IV : ", math.abs( self.quad_cnt ), self.ang_delta_base, self.ang_delta_sum )
-
-		self.quad = new_quad
-		self.stateFunc = self._quad_IV
-
-		self:stateFunc( new_quad, refang )
-
-
-	-- forward, positive
-	elseif new_quad == 2 then
-
-		self.quad_cnt = self.quad_cnt + 1
-
-		if curr_quad_cnt == 0 then
-			self.ang_delta_base = self.ang_base
-			self.ang_delta = 0
-			self.ang_delta_sum = 0
-		else
-			if self.quad_cnt == 0 then
-				self.ang_delta_sum = 0
-			else
-				self.ang_delta_sum = self.direction * ( math.abs( self.quad_cnt ) - 1 ) * 90
-			end
-		end
-
-		--print( "III > II : ", math.abs( self.quad_cnt ), self.ang_delta_base, self.ang_delta_sum )
-
-		self.quad = new_quad
-		self.stateFunc = self._quad_II
-
-		self:stateFunc( new_quad, refang )
-
-
-	-- cross, positive
-	elseif new_quad == 1 then
-
-	-- current quadrant
-	else
-
-		-- we started here
-		if curr_quad_cnt == 0 then
-			self.ang_delta_base = 0
-
-			if refang > ang_base then
-				self.direction = -1
-				self.ang_delta = self.ang_base - refang
-
-			elseif refang < ang_base then
-				self.direction = 1
-				self.ang_delta = self.ang_base - refang
-
-			else
-				self.direction = 0
-				self.ang_delta = 0
-
-			end
-
-
-		else
-			-- back, negative
-			if self.direction == -1 then
-				self.ang_delta = -refang
-
-			-- forward, positive
-			elseif self.direction == 1 then
-				-- TODO
-				self.ang_delta = 90 - refang
-
-			end
-
-		end
-
-	end
-
-end
-
-function Triggr:_quad_IV( new_quad, refang )
-
-	local curr_quad = self.quad
-	local curr_quad_cnt = self.quad_cnt
-	local ang_base = self.ang_base
-
-	-- back, negative
-	if new_quad == 1 then
-
-		self.quad_cnt = self.quad_cnt - 1
-
-		if curr_quad_cnt == 0 then
-			self.ang_delta_base = self.ang_base - 90
-			self.ang_delta = 0
-			self.ang_delta_sum = 0
-		else
-			if self.quad_cnt == 0 then
-				self.ang_delta_sum = 0
-			else
-				self.ang_delta_sum = self.direction * ( math.abs( self.quad_cnt ) - 1 ) * 90
-			end
-		end
-
-		--print( "IV > I : ", math.abs( self.quad_cnt ), self.ang_delta_base, self.ang_delta_sum )
-
-		self.quad = new_quad
-		self.stateFunc = self._quad_I
-
-		self:stateFunc( new_quad, refang )
-
-
-	-- forward, positive
-	elseif new_quad == 3 then
-
-		self.quad_cnt = self.quad_cnt + 1
-
-		if curr_quad_cnt == 0 then
-			-- TODO
-			self.ang_delta_base = 90 - self.ang_base
-			self.ang_delta = 0
-			self.ang_delta_sum = 0
-		else
-			if self.quad_cnt == 0 then
-				self.ang_delta_sum = 0
-			else
-				self.ang_delta_sum = self.direction * ( math.abs( self.quad_cnt ) - 1 ) * 90
-			end
-		end
-
-		--print( "IV > III : ", math.abs( self.quad_cnt ), self.ang_delta_base, self.ang_delta_sum )
-
-		self.quad = new_quad
-		self.stateFunc = self._quad_III
-
-		self:stateFunc( new_quad, refang )
-
-
-	-- cross, positive
-	elseif new_quad == 2 then
-
-	-- current quadrant
-	else
-
-		-- we started here
-		if curr_quad_cnt == 0 then
-			self.ang_delta_base = 0
-
-			if refang < ang_base then
-				self.direction = -1
-				self.ang_delta = -( self.ang_base - refang )
-
-			elseif refang > ang_base then
-				self.direction = 1
-				self.ang_delta = -( self.ang_base - refang )
-
-			else
-				self.direction = 0
-				self.ang_delta = 0
-
-			end
-
-
-		else
-			-- back, negative
-			if self.direction == -1 then
-				self.ang_delta = refang - 90
-
-			-- forward, positive
-			elseif self.direction == 1 then
-				self.ang_delta = refang
-
-			end
-
-		end
-
-	end
-
+	self.angle_sum = self.angle_sum - delta
+	self.ang_last = ang
 end
 
 
@@ -581,7 +139,7 @@ end
 
 
 -- angle in degrees
-function y_given_x_angle( x, angle )
+local function y_given_x_angle( x, angle )
 	--print( "y_given_x_angle" )
 
 	-- use negative angle to compensate for difference
@@ -590,7 +148,7 @@ function y_given_x_angle( x, angle )
 end
 
 -- angle in degrees
-function x_given_y_angle( y, angle )
+local function x_given_y_angle( y, angle )
 	--print( "y_given_x_angle" )
 
 	-- use negative angle to compensate for difference
@@ -599,7 +157,7 @@ function x_given_y_angle( y, angle )
 end
 
 
-function checkBounds( value, bounds )
+local function checkBounds( value, bounds )
 
 	local v = value
 	if bounds[1] ~= nil and v < bounds[1] then
@@ -621,7 +179,7 @@ end
 -- functions return :
 -- ( xPos, yPos )
 --
-function createConstrainMoveFunc( dmc, params )
+local function createConstrainMoveFunc( dmc, params )
 
 	local p = params or {}
 	local f
@@ -738,7 +296,7 @@ end
 -- ( "MAX", value ) -- if over maximum, and max value
 -- nil -- if value passes
 --
-function createConstrainScaleFunc( params )
+local function createConstrainScaleFunc( params )
 
 	local p = params or {}
 	local f
@@ -787,7 +345,7 @@ end
 -- ( "MAX", value ) -- if over maximum, and max value
 -- nil -- if value passes
 --
-function createConstrainRotateFunc( params )
+local function createConstrainRotateFunc( params )
 
 	local p = params or {}
 	local f
@@ -991,7 +549,7 @@ local function calculateDelta( obj )
 	local x, y
 	local action
 
-	touch, midpoint = dmc.touchFunc()
+	local touch, midpoint = dmc.touchFunc()
 	
 	dmc.midpointTouch = midpoint
 
@@ -1010,7 +568,7 @@ local function calculateDelta( obj )
 	-- calculate new distance between touches and scale
 	local d, scale, scaled
 	action = dmc.actions[ 'scale' ]
-	if action and not action[ dmc.activeTouch ] then
+	if not action or not action[ dmc.activeTouch ] then
 		scale = 1.0
 		scaled = dmc.scaleOrig
 	else
@@ -1038,8 +596,12 @@ local function calculateDelta( obj )
 
 
 	-- calculate new position
-	x = dmc.midpointTouch.x + math.cos( math.rad( -( dmc.angleCenter + angleDiff ) ) ) * ( dmc.distanceCenter * scale )
-	y = dmc.midpointTouch.y + math.sin( math.rad( -( dmc.angleCenter + angleDiff ) ) ) * ( dmc.distanceCenter * scale )
+	-- the object turns around the touches only if it rotates
+	action = dmc.actions[ 'rotate' ]
+	local turn = 0
+	if action and action[ dmc.activeTouch ] then turn = angleDiff end
+	x = dmc.midpointTouch.x + math.cos( math.rad( -( dmc.angleCenter + turn ) ) ) * ( dmc.distanceCenter * scale )
+	y = dmc.midpointTouch.y + math.sin( math.rad( -( dmc.angleCenter + turn ) ) ) * ( dmc.distanceCenter * scale )
 	--print( "x.y: ", x, y )
 
 	local xDiff = x - dmc.xOrig
@@ -1072,7 +634,7 @@ local function calculateDelta( obj )
 end
 
 
-function updateObject( obj, phase, params )
+local function updateObject( obj, phase, params )
 
 	local dmc = obj.__dmc.multitouch
 
@@ -1083,7 +645,7 @@ function updateObject( obj, phase, params )
 
 	action = dmc.actions[ 'move' ] 
 	if action and action[ dmc.activeTouch ] then
-		xPos, yPos = action.func( params.x, params.y )
+		local xPos, yPos = action.func( params.x, params.y )
 
 		obj.x = xPos ; obj.y = yPos
 	end
@@ -1123,7 +685,7 @@ end
 
 
 
-function multitouchTouchHandler( event )
+local function multitouchTouchHandler( event )
 	--print( "multitouchTouchHandler", event.id )
 
 	local f, xPos, yPos, cO, calcs, beginPoints
@@ -1154,7 +716,7 @@ function multitouchTouchHandler( event )
 		end
 
 		touches[ event.id ] = event
-		TouchMgr:setFocus( event.target, event.id )
+		TouchMgr.setFocus( event.target, event.id )
 		table.insert( touchStack, 1, event.id )
 
 		--Utils.print( event )
@@ -1263,7 +825,7 @@ function multitouchTouchHandler( event )
 
 			end
 
-			TouchMgr:unsetFocus( event.target, event.id )
+			TouchMgr.unsetFocus( event.target, event.id )
 
 			-- remove event from our structures
 			touches[ event.id ] = nil
@@ -1330,6 +892,8 @@ local MultiTouch = {}
 
 --== Constants ==--
 
+MultiTouch.VERSION = VERSION
+
 MultiTouch.MULTITOUCH_EVENT = MULTITOUCH_EVENT
 
 
@@ -1338,7 +902,7 @@ MultiTouch.MULTITOUCH_EVENT = MULTITOUCH_EVENT
 -- sets isSingleActive, isMultiActive
 -- returns table with keys: 'single', 'multi', 'func'
 --
-function processParameters( dmc, action, touchtype, params )
+local function processParameters( dmc, action, touchtype, params )
 	--print( "processParameters", action )
 
 	local config = {}
@@ -1393,7 +957,7 @@ MultiTouch.activate = function( obj, action, touchtype, params )
 	params = params or {}
 
 	-- create our fancy callback and set event listener
-	TouchMgr:register( obj, multitouchTouchHandler )
+	TouchMgr.register( obj, multitouchTouchHandler )
 
 	--== Setup special dmc_touch variables ==--
 
@@ -1492,7 +1056,7 @@ MultiTouch.deactivate = function( obj )
 	local dmc = obj.__dmc.multitouch
 	obj.__dmc.multitouch = nil
 
-	TouchMgr:unregister( obj, multitouchTouchHandler )
+	TouchMgr.unregister( obj, multitouchTouchHandler )
 
 end
 
