@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.1 (2026-10-02)
+
+### Fixed
+
+- The event's `distanceDelta` is the distance the object has moved since the gesture began, as documented in 2015. It was the distance from the touch to the middle of the gesture, and `nil` for an object without a `scale` action.
+- `deactivate()` on an object that was never activated does nothing; it raised an error.
+- `activate()` with an unknown action raises an error that names it, at your call, before touching the object; it printed a warning and then failed inside the module.
+
+### Added
+
+- The README: Quick Start, API, Configuration, Known Issues, Development; an examples README with a screenshot.
+
 ## 0.4.0 (2026-10-01)
 
 ### Fixed

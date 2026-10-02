@@ -70,7 +70,7 @@ function test_loadSetsNoGlobals()
 	for k in pairs( _G ) do
 		assert_true( globals[k] or k=='dmc_multitouch_spec', 'new global: ' .. tostring( k ) )
 	end
-	assert_equal( '0.4.0', MultiTouch.VERSION )
+	assert_equal( '0.4.1', MultiTouch.VERSION )
 end
 
 function test_registersObjectWithTouchManager()
@@ -170,4 +170,27 @@ function test_twoFingerMoveWithoutRotate()
 	twoFingers( 90, 50, 6 )
 	assert_true( near( o.x, 200 ), o.x ) ; assert_true( near( o.y, 270 ), o.y )
 	assert_equal( 0, o.rotation )
+end
+
+function test_distanceDeltaIsDistanceMoved()
+	-- without a scale action too; 30 across, 40 down is 50
+	MultiTouch.activate( o, 'move', 'single' )
+	local A = {}
+	T( 'began', A, 190, 260 ) ; T( 'moved', A, 220, 300 ) ; T( 'ended', A, 220, 300 )
+	assert_equal( 0, events[1].distanceDelta )
+	assert_true( near( events[2].distanceDelta, 50 ), events[2].distanceDelta )
+end
+
+function test_deactivateWithoutActivate()
+	MultiTouch.deactivate( o )
+	o.__dmc = {} ; MultiTouch.deactivate( o )
+	assert_equal( 0, #TM.calls )
+end
+
+function test_unknownActionIsAnError()
+	local ok, err = pcall( MultiTouch.activate, o, 'spin', 'single' )
+	assert_false( ok )
+	assert_match( "unknown action 'spin'", err )
+	assert_equal( 0, #TM.calls ) -- nothing registered
+	assert_nil( o.__dmc )
 end
