@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2 (2026-10-17)
+
+### Fixed
+
+- A cancelled touch ends the gesture: the module looked for the phase `'canceled'`, but Solar2D (and the Touch Manager, when it ends an object's touches) spells it `'cancelled'`, so a touch cancelled mid-gesture (e.g. by a system alert) kept the object's focus and its place in the gesture, and the object took no new touch.
+
 ## 0.4.1 (2026-10-02)
 
 ### Fixed
