@@ -125,7 +125,7 @@ Removes every action from `obj`; it no longer responds to touches. It does nothi
 | field | |
 |---|---|
 | `name` | `'multitouch_event'` |
-| `phase` | `'began'`, `'moved'`, `'ended'` or `'canceled'`, from the touch that caused it |
+| `phase` | `'began'`, `'moved'`, `'ended'` or `'cancelled'`, from the touch that caused it |
 | `target` | the object |
 | `x`, `y` | where the gesture puts the object, before `xBounds` and `yBounds` |
 | `xDelta`, `yDelta` | how far that is from where the object was when the gesture began |

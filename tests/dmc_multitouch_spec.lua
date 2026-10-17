@@ -70,7 +70,7 @@ function test_loadSetsNoGlobals()
 	for k in pairs( _G ) do
 		assert_true( globals[k] or k=='dmc_multitouch_spec', 'new global: ' .. tostring( k ) )
 	end
-	assert_equal( '0.4.1', MultiTouch.VERSION )
+	assert_equal( '0.4.2', MultiTouch.VERSION )
 end
 
 function test_registersObjectWithTouchManager()
@@ -99,6 +99,19 @@ function test_focusOnTheObject()
 	end
 	assert_equal( o, focus[2] ) ; assert_equal( A, focus[3] )
 	assert_equal( o, unfocus[2] ) ; assert_equal( A, unfocus[3] )
+end
+
+-- Solar2D spells it 'cancelled' (e.g. a system alert during a gesture,
+-- or the Touch Manager ending active touches)
+function test_cancelledTouchEndsTheGesture()
+	MultiTouch.activate( o, 'move', 'single' )
+	local A, B = {}, {}
+	T( 'began', A, 200, 270 )
+	assert_true( T( 'cancelled', A, 200, 270 ) )
+	assert_equal( 'cancelled', events[#events].phase )
+	assert_equal( 'unsetFocus', TM.calls[#TM.calls][1] )
+	-- the object takes a new touch
+	assert_true( T( 'began', B, 200, 270 ) )
 end
 
 function test_singleDrag()
